@@ -1,0 +1,5 @@
+setuptools>=41.6.0
+hail>=0.2.59
+matplotlib>=3.3.3
+plotnine>=0.7.1
+qqman>=1.0.6
