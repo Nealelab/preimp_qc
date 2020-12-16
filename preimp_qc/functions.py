@@ -1,6 +1,6 @@
 import hail as hl
 from typing import List, Tuple
-from preimp_qc.plots import cr_plts, man_qq_plts
+from .plots import cr_plts, man_qq_plts
 
 
 def plink_to_mt(dirname: str, basename: str, reference: str = 'GRCh38') -> hl.MatrixTable:
@@ -111,7 +111,7 @@ def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, min
     # 3. Sample QC: F_stats
     print("3. Sample QC: F_stats")
     imputed_sex = hl.impute_sex(mt.GT)
-    from preimp_qc.plots import fstat_plt
+    from .plots import fstat_plt
     f_stat_plot = fstat_plt(imputed_sex, fhet_y, fhet_x, "pre")
     f_stat_out = mt.filter_cols(((imputed_sex[mt.s].f_stat < fhet_x) & (mt.is_female == False) |
                                  (imputed_sex[mt.s].f_stat > fhet_y) & (mt.is_female == True))).s.collect()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
-from preimp_qc.functions import compute_qc_metrics, plink_to_mt, vcf_to_mt, run_qc
-from preimp_qc.report import write_html_report
+from .functions import compute_qc_metrics, plink_to_mt, vcf_to_mt, run_qc
+from .report import write_html_report
 
 
 def main():
