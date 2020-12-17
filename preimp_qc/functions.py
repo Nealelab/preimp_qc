@@ -17,7 +17,11 @@ def vcf_to_mt(dirname: str, vcf: str, annotations: str) -> hl.MatrixTable:
     mt = hl.read_matrix_table('{}preimpQC.mt'.format(dirname))
     ann = hl.import_table(annotations, impute=True).key_by('Sample')
     mt = mt.annotate_cols(annotations=ann[mt.s])
-
+    # need to change reported sex to True/False, can update how this is done later, ideally don't want to hardcode
+    # this will not work for unreported sex but will work for missing values
+    mt = mt.annotate_cols(annotations=mt.annotate(Sex=hl.if_else((mt.annotations.Sex == 'F' | mt.annotations.Sex == 2 |
+                                                                  mt.annotations.Sex == 'Female'), True, False)))
+    # add a check to make sure file is formatted as we'd expect else quit and throw error
     return mt
 
 
@@ -61,13 +65,14 @@ def stats_split_mt(mt: hl.MatrixTable) -> Tuple[List[int], hl.MatrixTable, hl.Ma
     return counts, mt_cases, mt_controls
 
 
-def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, mind: float, fhet_y: int, fhet_x: int,
-           geno: float, midi: float, maf: float, hwe_th_co: float, hwe_th_ca: float, qc_round: int, withpna: int = 0)\
-        -> hl.MatrixTable:
+def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, input_type: str, pre_geno: float, mind: float, fhet_y: int,
+           fhet_x: int, geno: float, midi: float, maf: float, hwe_th_co: float, hwe_th_ca: float, qc_round: int,
+           withpna: int = 0) -> hl.MatrixTable:
     """
-    :param mt:
+    :param mt: Hail MatrixTable
     :param dirname:
     :param basename:
+    :param input_type:
     :param pre_geno:
     :param mind:
     :param fhet_y:
@@ -120,9 +125,23 @@ def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, min
 
     # 4. Sample QC: Sex violations (excluded) - genetic sex does not match pedigree sex
     print("4. Sample QC: Sex violations (excluded) - genetic sex does not match pedigree sex")
+    if input_type == "plink":
+        # Verify that when sex info is missing value is set to None
+        mt = mt.filter_cols((mt.is_female != imputed_sex[mt.s]) & (mt.is_female != None), keep=False)
+    elif input_type == "vcf":
+        # Verify that when meta file is read in, column formatting is kept
+        mt = mt.filter_cols((mt.annotations.Sex != imputed_sex[mt.s]) & (mt.annotations.Sex != None), keep=False)
 
     # 5. Sample QC: Sex warnings (not excluded) - undefined phenotype / ambiguous genotypes
     print("# 5. Sample QC: Sex warnings (not excluded) - undefined phenotype / ambiguous genotypes")
+    if input_type == "plink":
+        undef_count = mt.aggregate_cols(hl.agg.counter(mt.is_female == None))
+        print("Warning: {} individuals have undefined phenotype/ambiguous genotypes".format(undef_count))
+    elif input_type == "vcf":
+        undef_count = mt.aggregate_cols(hl.agg.counter(mt.annotations.Sex == None))
+        print("Warning: {} individuals have undefined phenotype/ambiguous genotypes".format(undef_count))
+    # Add an output of the individual IDs who have ambiguous sex so they can be removed?
+    # Alternatively add option at this step to remove indivs with ambiguous sex?
 
     # 6. SNP QC: call rate ≥ 0.98
     print("# 6. SNP QC: call rate ≥ 0.98")
@@ -132,6 +151,7 @@ def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, min
 
     # 7. SNP QC: missing difference > 0.02
     print("# 7. SNP QC: missing difference > 0.02")
+
 
     # 8. SNP QC: SNPs with no valid association p value are excluded (i.e., invariant SNP)
     print("# 8. SNP QC: SNPs with no valid association p value are excluded (i.e., invariant SNP)")

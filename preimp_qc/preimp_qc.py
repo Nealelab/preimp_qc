@@ -45,8 +45,9 @@ def main():
     mt = compute_qc_metrics(input_mt)
 
     print("Running QC")
-    qc_tables, qc_plots = run_qc(mt, arg.dirname, arg.basename, arg.pre_geno, arg.mind, arg.fhet_y, arg.fhet_x,
-                                 arg.geno, arg.midi, arg.maf, arg.hwe_th_con, arg.hwe_th_cas, arg.qc_round, arg.withpna)
+    qc_tables, qc_plots = run_qc(mt, arg.dirname, arg.basename, arg.input_type, arg.pre_geno, arg.mind, arg.fhet_y,
+                                 arg.fhet_x, arg.geno, arg.midi, arg.maf, arg.hwe_th_con, arg.hwe_th_cas, arg.qc_round,
+                                 arg.withpna,)
 
     print("Generating report")
     write_html_report(arg.dirname, arg.basename, qc_tables, qc_plots)
