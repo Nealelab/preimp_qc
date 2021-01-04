@@ -1,5 +1,5 @@
 import hail as hl
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 def compute_qc_metrics(mt: hl.MatrixTable) -> hl.MatrixTable:
@@ -47,7 +47,7 @@ def collect_counts(mt: hl.MatrixTable) -> List[int]:
     return counts
 
 
-def filter_var_cr(mt: hl.MatrixTable, geno: float) -> Tuple[hl.MatrixTable, dict[int]]:
+def filter_var_cr(mt: hl.MatrixTable, geno: float) -> Tuple[hl.MatrixTable, Dict[str, int]]:
     # steps 1 and 6
     mt = compute_qc_metrics(mt)
     geno_cr_remove = mt.filter_rows(mt.variant_qc.call_rate < (1 - geno)).rsid.collect()
@@ -61,7 +61,7 @@ def filter_var_cr(mt: hl.MatrixTable, geno: float) -> Tuple[hl.MatrixTable, dict
     return mt, results
 
 
-def filter_sample_cr(mt: hl.MatrixTable, mind: float) -> Tuple[hl.MatrixTable, dict[[str, int], [str, int]]]:
+def filter_sample_cr(mt: hl.MatrixTable, mind: float) -> Tuple[hl.MatrixTable, Dict[[str, int], [str, int]]]:
     # step 2
     mt = compute_qc_metrics(mt)
 
@@ -112,10 +112,12 @@ class FilterSex:
         imputed_sex = hl.impute_sex(self.mt.GT)
         if self.input_type == "plink":
             # Verify that when sex info is missing value is set to None
-            sex_exlude = self.mt.filter_cols((self.mt.is_female != imputed_sex[self.mt.s]) & (self.mt.is_female != None)).s.collect()
+            sex_exlude = self.mt.filter_cols(
+                (self.mt.is_female != imputed_sex[self.mt.s]) & (self.mt.is_female != None)).s.collect()
         elif self.input_type == "vcf":
             # Verify that when meta file is read in, column formatting is kept
-            sex_exclude = self.mt.filter_cols((self.mt.annotations.Sex != imputed_sex[self.mt.s]) & (self.mt.annotations.Sex != None)).s.collect()
+            sex_exclude = self.mt.filter_cols(
+                (self.mt.annotations.Sex != imputed_sex[self.mt.s]) & (self.mt.annotations.Sex != None)).s.collect()
         if len(sex_exclude) > 0:
             mt = self.mt.filter_cols(hl.literal(sex_exclude).contains(self.mt['s']), keep=False)
 
@@ -125,14 +127,13 @@ class FilterSex:
 
         return mt, results
 
-
     def sex_warnings(self):
         # step 5
         if self.input_type == "plink":
             undef_count = self.mt.aggregate_cols(hl.agg.counter(self.mt.is_female == None))
         elif self.input_type == "vcf":
             undef_count = self.mt.aggregate_cols(hl.agg.counter(self.mt.annotations.Sex == None))
-            #print("Warning: {} individuals have undefined phenotype/ambiguous genotypes".format(undef_count))
+            # print("Warning: {} individuals have undefined phenotype/ambiguous genotypes".format(undef_count))
 
         return undef_count
 
