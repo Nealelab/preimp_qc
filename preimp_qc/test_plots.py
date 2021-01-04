@@ -2,20 +2,31 @@ from plotnine import *
 import hail as hl
 import matplotlib.pyplot as plt
 from qqman import qqman
+import base64
+import io
 
 
-def plt_cr(df, threshold, title, prepost):
+def plt_to_base64(plt):
+    buffer = io.BytesIO()
+    plt.save(buffer, format='PNG', verbose=False)
+    buffer.seek(0)
+
+    plt_base64 = base64.b64encode(buffer.read()).decode('ascii')
+    return '<img src="data:image/png;base64,{}">'.format(plt_base64)
+
+
+def plt_cr(df, threshold, title):
 
     plt_cr = ggplot(df, aes(x='call_rate')) + \
              geom_histogram(bins=40, color="black", fill="blue") + \
              geom_vline(xintercept=1 - threshold, linetype="dashed", color="red") + \
-             labs(title="{} {}-QC".format(title, prepost), y="Frequency") + \
+             labs(title=title, y="Frequency") + \
              theme_bw()
 
     return plt_cr
 
 
-def cr_var_plts(mt, geno, prepost):
+def cr_var_plts(mt, geno):
 
     from .test_qc import stats_split_mt
 
@@ -30,13 +41,17 @@ def cr_var_plts(mt, geno, prepost):
     cas_var_df = cas_cr_var.to_pandas()
     con_var_df = con_cr_var.to_pandas()
 
-    cas_var_plt = plt_cr(cas_var_df, geno, "Cases SNP Call Rate", prepost)
-    con_var_plt = plt_cr(con_var_df, geno, "Controls SNP Call Rate", prepost)
+    cas_var_plt = plt_cr(cas_var_df, geno, "Cases variant call rate")
+    cas_var_plt64 = plt_to_base64(cas_var_plt)
+    con_var_plt = plt_cr(con_var_df, geno, "Controls variant call rate")
+    con_var_plt64 = plt_to_base64(con_var_plt)
 
-    return cas_var_plt, con_var_plt
+    return cas_var_plt64, con_var_plt64
 
 
-def cr_plts(mt_cases, mt_controls, mind, geno, prepost):
+def cr_id_plts(mt, mind):
+    from .test_qc import stats_split_mt
+    mt_cases, mt_controls = stats_split_mt(mt)
     cas_cr_ht_col = mt_cases.cols()
     con_cr_ht_col = mt_controls.cols()
 
@@ -48,13 +63,15 @@ def cr_plts(mt_cases, mt_controls, mind, geno, prepost):
     cas_id_df = cas_cr_id.to_pandas()
     con_id_df = con_cr_id.to_pandas()
 
-    cas_id_plt = plt_cr(cas_id_df, mind, "Cases Sample Call Rate", prepost)
-    con_id_plt = plt_cr(con_id_df, mind, "Controls Sample Call Rate", prepost)
+    cas_id_plt = plt_cr(cas_id_df, mind, "Cases sample call rate")
+    cas_id_plt64 = plt_to_base64(cas_id_plt)
+    con_id_plt = plt_cr(con_id_df, mind, "Controls sample call rate")
+    con_id_plt64 = plt_to_base64(con_id_plt)
 
-    return cas_id_plt, con_id_plt
+    return cas_id_plt64, con_id_plt64
 
 
-def fstat_plt(imputed_sex_ht, female_thresh, male_thresh, prepost):
+def fstat_plt(imputed_sex_ht, female_thresh, male_thresh):
     fstat_df = imputed_sex_ht.to_pandas()
     fstat_df['is_female'] = fstat_df['is_female'].astype(str)
     fstat_df['is_female'] = fstat_df['is_female'].replace(['True', 'False', 'None'], ['female', 'male', 'unspecified'])
@@ -65,14 +82,16 @@ def fstat_plt(imputed_sex_ht, female_thresh, male_thresh, prepost):
                   geom_vline(xintercept=male_thresh, linetype="dashed", color="blue") + \
                   geom_vline(xintercept=female_thresh, linetype="dashed", color="purple") + \
                   scale_fill_manual(name="Sex", values=sex_colors) + \
-                  labs(title="F-statistic distribution {}-QC".format(prepost),
+                  labs(title="F-statistic distribution",
                        x="F-statistic", y="Frequency") + \
                   theme_bw()
 
-    return f_stat_plot
+    f_stat_plot64 = plt_to_base64(f_stat_plot)
+
+    return f_stat_plot64
 
 
-def man_qq_plts(mt, prepost):
+def man_qq_plts(mt):
 
     gwas_ht = hl.linear_regression_rows(y=mt.is_case,
                                         x=mt.GT.n_alt_alleles(),
@@ -88,8 +107,16 @@ def man_qq_plts(mt, prepost):
     man_df_pruned = man_df_pruned.replace(to_replace=["X", "Y", "MT"],
                                           value=[23, 24, 25])
 
+    buffer = io.BytesIO()
     figure, axes = plt.subplots(nrows=1, ncols=2, figsize=(25, 10))
-    qqman.manhattan(man_df_pruned, ax=axes[0], xrotation=90.0, title="Manhattan plot {}-QC".format(prepost))
-    qqman.qqplot(man_df_pruned, ax=axes[1], title="QQ plot {}-QC".format(prepost))
+    qqman.manhattan(man_df_pruned, ax=axes[0], xrotation=90.0, title="Manhattan plot")
+    qqman.qqplot(man_df_pruned, ax=axes[1], title="QQ plot")
 
-    return axes
+    figure.tight_layout()
+    plt.savefig(buffer, format='PNG')
+    plt.clf()
+    plt.close()
+    buffer.seek(0)
+
+    plt_base64 = base64.b64encode(buffer.read()).decode('ascii')
+    return '<img src="data:image/png;base64,{}">'.format(plt_base64)
