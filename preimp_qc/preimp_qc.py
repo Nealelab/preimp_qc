@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
-from preimp_qc.functions import compute_qc_metrics, plink_to_mt, vcf_to_mt, run_qc
+from preimp_qc.functions import run_qc
+from preimp_qc.io import read_plink, read_vcf, read_mt
 from preimp_qc.report import write_html_report
 
 
@@ -10,7 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description='preimp_qc V1.0')
     parser.add_argument('--dirname', type=str, required=True)
     parser.add_argument('--basename', type=str, required=True)
-    parser.add_argument('--inputType', type=str, required=True, choices=['vcf', 'plink'])
+    parser.add_argument('--input_type', type=str, required=True, choices=['vcf', 'plink', 'hail'])
     parser.add_argument('--annotations', type=str)
     parser.add_argument('--reference', type=str, default='GRCh38')
     parser.add_argument('--qc_round', type=str, required=True)
@@ -34,18 +35,17 @@ def main():
     arg = parser.parse_args()
 
     # read input
-    if arg.inputType == 'plink':
-        input_mt = plink_to_mt(arg.dirname, arg.basename, arg.reference)
+    if arg.input_type == 'plink':
+        input_mt = read_plink(arg.dirname, arg.basename, arg.reference)
 
-    if arg.inputType == 'vcf':
-        input_mt = vcf_to_mt(arg.dirname, arg.vcf, arg.annotations)
+    if arg.input_type == 'vcf':
+        input_mt = read_vcf(arg.dirname, arg.vcf, arg.annotations)
 
-    # compute sample and variant qc metrics
-    print("Computing QC metrics")
-    mt = compute_qc_metrics(input_mt)
+    if arg.input_type == 'hail':
+        input_mt = read_mt(arg.dirname, arg.basename)
 
     print("Running QC")
-    qc_tables, qc_plots = run_qc(mt, arg.dirname, arg.basename, arg.input_type, arg.pre_geno, arg.mind, arg.fhet_y,
+    qc_tables, qc_plots = run_qc(input_mt, arg.dirname, arg.basename, arg.input_type, arg.pre_geno, arg.mind, arg.fhet_y,
                                  arg.fhet_x, arg.geno, arg.midi, arg.maf, arg.hwe_th_con, arg.hwe_th_cas, arg.qc_round,
                                  arg.withpna,)
 
