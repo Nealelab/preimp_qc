@@ -112,7 +112,7 @@ class FilterSex:
         imputed_sex = hl.impute_sex(self.mt.GT)
         if self.input_type == "plink":
             # Verify that when sex info is missing value is set to None
-            sex_exlude = self.mt.filter_cols(
+            sex_exclude = self.mt.filter_cols(
                 (self.mt.is_female != imputed_sex[self.mt.s]) & (self.mt.is_female != None)).s.collect()
         elif self.input_type == "vcf":
             # Verify that when meta file is read in, column formatting is kept
