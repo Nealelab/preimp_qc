@@ -5,19 +5,22 @@ from typing import Tuple, Any, Dict, Optional
 from .utils import gen_uid
 
 
+#Tested and working
+# Usage example (split mt by phenotype): split_mts = split_mt(mt.is_case), then to get the cases mt, cases_mt = split_mts[True]
 def split_mt(category: hl.Expression) -> Dict[str, hl.MatrixTable]:
     mt = category._indices.source
     categories = mt.aggregate_cols(hl.struct(categories=hl.agg.collect_as_set(category)))
 
     result = {}
     for cat in categories['categories']:
-        if cat:
-            result[cat] = mt.filter_cols(mt[cat] == cat)
+        if cat is not None:
+            result[cat] = mt.filter_cols(category == cat)
         else:
-            result[cat] = mt.filter_cols(hl.is_missing(mt[cat]))
+            result[cat] = mt.filter_cols(hl.is_missing(category))
     return result
 
 
+# Tested and working
 def summary_stats(mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, Dict[str, Any]]:
     results = {}
 
