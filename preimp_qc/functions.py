@@ -29,7 +29,7 @@ def summary_stats(mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, Dict[str, Any]]:
         False: 'control',
         None: 'unknown'
     }
-    is_case_counts = {mapping[pheno]: count for pheno, count in counts['is_case']}
+    is_case_counts = {mapping[pheno]: count for pheno, count in counts['is_case'].items()}
     results['is_case_counts'] = is_case_counts
 
     mapping = {
@@ -37,7 +37,7 @@ def summary_stats(mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, Dict[str, Any]]:
         False: 'male',
         None: 'unknown'
     }
-    is_female_counts = {mapping[pheno]: count for pheno, count in counts['is_female']}
+    is_female_counts = {mapping[pheno]: count for pheno, count in counts['is_female'].items()}
     results['is_female_counts'] = is_female_counts
 
     n_variants = mt.count_rows()
