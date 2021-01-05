@@ -209,14 +209,18 @@ def filter_samples_by_sex_violations(gt: hl.CallExpression, is_female: hl.Boolea
                                  (imputed_sex_ht[mt.s].f_stat > f_stat_y) & (is_female == True))).s.collect()
     if len(f_stat_out) > 0:
         mt = mt.filter_cols(hl.literal(f_stat_out).contains(mt['s']), keep=False)
+        
+    excluded_samples = f_stat_out
+    n_excluded_samples = len(f_stat_out)
 
     # FIXME: I wasn't sure what you wanted to use this for
-    sex_check_table = pd.DataFrame(f_stat_out, columns=['SampleID'])
+    # wanted to have an option to write out these samples to a file, but we can use the excluded_samples variable for that
+    # sex_check_table = pd.DataFrame(f_stat_out, columns=['SampleID'])
 
     results = {
-        'excluded_samples': ...,
-        'n_excluded_samples': ...,
-        'sex_check_table': sex_check_table,
+        'excluded_samples': excluded_samples,
+        'n_excluded_samples': n_excluded_samples,
+        #'sex_check_table': sex_check_table,
         'f_stat_x': f_stat_x,
         'f_stat_y': f_stat_y
     }
