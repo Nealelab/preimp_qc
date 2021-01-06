@@ -1,24 +1,8 @@
 import hail as hl
 from typing import List, Tuple
-from .plots import cr_plts, man_qq_plts
 
-
-def plink_to_mt(dirname: str, basename: str, reference: str = 'GRCh38') -> hl.MatrixTable:
-    hl.init(default_reference=reference)
-    mt: hl.MatrixTable = hl.import_plink(bed=dirname + basename + '.bed',
-                                         bim=dirname + basename + '.bim',
-                                         fam=dirname + basename + '.fam')
-    return mt
-
-
-# work out a way to deal with .vcf and .vcf.gz/bgz
-def vcf_to_mt(dirname: str, vcf: str, annotations: str) -> hl.MatrixTable:
-    hl.import_vcf(vcf).write('{}preimpQC.mt'.format(dirname), overwrite=True)
-    mt = hl.read_matrix_table('{}preimpQC.mt'.format(dirname))
-    ann = hl.import_table(annotations, impute=True).key_by('Sample')
-    mt = mt.annotate_cols(annotations=ann[mt.s])
-
-    return mt
+import preimp_qc.test_qc as qc
+import preimp_qc.test_plots as plt
 
 
 def compute_qc_metrics(mt: hl.MatrixTable) -> hl.MatrixTable:
@@ -61,13 +45,14 @@ def stats_split_mt(mt: hl.MatrixTable) -> Tuple[List[int], hl.MatrixTable, hl.Ma
     return counts, mt_cases, mt_controls
 
 
-def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, mind: float, fhet_y: int, fhet_x: int,
-           geno: float, midi: float, maf: float, hwe_th_co: float, hwe_th_ca: float, qc_round: int, withpna: int = 0)\
-        -> hl.MatrixTable:
+def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, input_type: str, pre_geno: float, mind: float, fhet_y: int,
+           fhet_x: int, geno: float, midi: float, maf: float, hwe_th_co: float, hwe_th_ca: float, qc_round: int,
+           withpna: int = 0) -> hl.MatrixTable:
     """
-    :param mt:
+    :param mt: Hail MatrixTable
     :param dirname:
     :param basename:
+    :param input_type:
     :param pre_geno:
     :param mind:
     :param fhet_y:
@@ -82,53 +67,55 @@ def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, min
     :return:
     """
 
+    # compute qc metrics
+    mt = qc.compute_qc_metrics(mt)
+
     # Pre-qc counts
-    pre_qc_counts, pre_mt_cas, pre_mt_con = stats_split_mt(mt)
+    pre_qc_counts = qc.collect_counts(mt)
 
     # pre-qc plots
     print("Generating pre-QC plots")
-    pre_cas_var_base64, pre_cas_id_base64, pre_con_var_base64, pre_con_id_base64 = cr_plts(pre_mt_cas, pre_mt_con,
-                                                                                           mind,
-                                                                                           geno, "pre")
-    pre_man_qq_base64 = man_qq_plts(mt, "pre")
+    pre_cas_var_base64, pre_con_var_base64 = plt.cr_var_plts(mt, geno)
+    pre_cas_id_base64, pre_con_id_base64 = plt.cr_id_plts(mt, mind)
+
+    pre_man_qq_base64 = plt.man_qq_plts(mt)
 
     # 1. SNP QC: call rate ≥ 0.95
     print("1. SNP QC: call rate ≥ 0.95")
-    pre_geno_cr = mt.filter_rows(mt.variant_qc.call_rate < (1 - pre_geno)).rsid.collect()
-    if len(pre_geno_cr) > 0:
-        mt = mt.filter_rows(hl.literal(pre_geno_cr).contains(mt['rsid']), keep=False)
+    mt, var_pre_filter = qc.filter_var_cr(mt, pre_geno)
+    print("Pre QC call rate < 0.95: {}".format(var_pre_filter['geno_removed']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 2. Sample QC: call rate in cases or controls ≥ 0.98
     print("2. Sample QC: call rate in cases or controls ≥ 0.98")
-    sample_miss = mt.filter_cols(mt.sample_qc.call_rate < (1 - mind))
-    sample_miss_cases = sample_miss.filter_cols(sample_miss.is_case == True).s.collect()
-    sample_miss_controls = sample_miss.filter_cols(sample_miss.is_case == False).s.collect()
-    n_sample_miss = len(sample_miss_cases) + len(sample_miss_controls)
-    samples_miss = sample_miss_cases + sample_miss_controls
-    if n_sample_miss > 0:
-        mt = mt.filter_cols(hl.literal(samples_miss).contains(mt['s']), keep=False)
+    mt, id_cr_filter = qc.filter_sample_cr(mt, mind)
+    print("Sample QC < 0.98: {}".format(id_cr_filter['sample_miss_cases'] + id_cr_filter['sample_miss_controls']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 3. Sample QC: F_stats
     print("3. Sample QC: F_stats")
-    imputed_sex = hl.impute_sex(mt.GT)
-    from .plots import fstat_plt
-    f_stat_plot = fstat_plt(imputed_sex, fhet_y, fhet_x, "pre")
-    f_stat_out = mt.filter_cols(((imputed_sex[mt.s].f_stat < fhet_x) & (mt.is_female == False) |
-                                 (imputed_sex[mt.s].f_stat > fhet_y) & (mt.is_female == True))).s.collect()
-    if len(f_stat_out) > 0:
-        mt = mt.filter_cols(hl.literal(f_stat_out).contains(mt['s']), keep=False)
+    
+    mt, f_stat_results = qc.filter_sex_check(mt, fhet_y, fhet_x)
+    print("Sex check filtered: {}".format(f_stat_results['sex_check_removed']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 4. Sample QC: Sex violations (excluded) - genetic sex does not match pedigree sex
     print("4. Sample QC: Sex violations (excluded) - genetic sex does not match pedigree sex")
+    mt, sex_violations = qc.sex_violations(mt, input_type)
+    print("Sex violations: {}".format(sex_violations['sex_excluded']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 5. Sample QC: Sex warnings (not excluded) - undefined phenotype / ambiguous genotypes
     print("# 5. Sample QC: Sex warnings (not excluded) - undefined phenotype / ambiguous genotypes")
+    sex_warnings_count = qc.sex_warnings(mt, input_type)
+    print("Sex warning: {}".format(sex_warnings_count))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 6. SNP QC: call rate ≥ 0.98
     print("# 6. SNP QC: call rate ≥ 0.98")
-    geno_cr = mt.filter_rows(mt.variant_qc.call_rate < (1 - geno)).rsid.collect()
-    if len(geno_cr) > 0:
-        mt = mt.filter_rows(hl.literal(geno_cr).contains(mt['rsid']), keep=False)
+    mt, var_filter = qc.filter_var_cr(mt, geno)
+    print("SNP QC call rate < 0.98: {}".format(var_filter['geno_removed']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 7. SNP QC: missing difference > 0.02
     print("# 7. SNP QC: missing difference > 0.02")
@@ -136,49 +123,49 @@ def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, pre_geno: float, min
     # 8. SNP QC: SNPs with no valid association p value are excluded (i.e., invariant SNP)
     print("# 8. SNP QC: SNPs with no valid association p value are excluded (i.e., invariant SNP)")
     if withpna == 0:
-        mt = mt.annotate_rows(MAC=hl.min(mt.variant_qc.AC))
-        monomorphic_snps = mt.filter_rows(mt.MAC == 0).rsid.collect()
-        if len(monomorphic_snps) > 0:
-            mt = mt.filter_rows(hl.literal(monomorphic_snps).contains(mt['rsid']), keep=False)
+        mt, invariant_snps = qc.filter_invariant_snps(mt)
+        print("Monormorphic SNPs: {}".format(invariant_snps['monomorphic_snps']))
+        print("Samples: {}".format(mt.count_cols()))
 
     # 9. SNP QC: with MAF ≥ 0.01
     print("# 9. SNP QC: with MAF ≥ 0.01")
-    mt = mt.annotate_rows(maf=hl.min(mt.variant_qc.AF))
-    snps_maf = mt.filter_rows(mt.maf < maf).rsid.collect()
-    if len(snps_maf) > 0:
-        mt = mt.filter_rows(hl.literal(snps_maf).contains(mt['rsid']), keep=False)
+    mt, maf_results = qc.filter_maf(mt, maf)
+    print("MAF: {}".format(maf_results['maf_removed']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 10. SNP QC: Hardy-Weinberg equilibrium (HWE) in controls p value ≥ 1e-06
     print("# 10. SNP QC: Hardy-Weinberg equilibrium (HWE) in controls p value ≥ 1e-06")
-    hwe_controls = mt.filter_cols(mt.is_case == False)
-    snps_hwe_controls = hwe_controls.filter_rows(hwe_controls.variant_qc.p_value_hwe < hwe_th_co).rsid.collect()
-    if len(snps_hwe_controls) > 0:
-        mt = mt.filter_rows(hl.literal(snps_hwe_controls).contains(mt['rsid']), keep=False)
+    mt, hwe_con_results = qc.filter_hwe(mt, 'Control', hwe_th_co)
+    print("HWE Controls: {}".format(hwe_con_results['maf_removed']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # 11. SNP QC: Hardy-Weinberg equilibrium (HWE) in cases p value ≥ 1e-10
     print("# 11. SNP QC: Hardy-Weinberg equilibrium (HWE) in cases p value ≥ 1e-10")
-    hwe_cases = mt.filter_cols(mt.is_case == True)
-    snps_hwe_cases = hwe_cases.filter_rows(hwe_cases.variant_qc.p_value_hwe < hwe_th_ca).rsid.collect()
-    if len(snps_hwe_cases) > 0:
-        mt = mt.filter_rows(hl.literal(snps_hwe_cases).contains(mt['rsid']), keep=False)
+    mt, hwe_cas_results = qc.filter_hwe(mt, 'Case', hwe_th_ca)
+    print("HWE Cases: {}".format(hwe_cas_results['maf_removed']))
+    print("Samples: {}".format(mt.count_cols()))
 
     # Post-qc counts
-    post_qc_counts, post_mt_cas, post_mt_con = stats_split_mt(mt)
+    post_qc_counts = qc.collect_counts(mt)
 
     # Post-QC plots
     print("Generating post-QC plots")
-    pos_cas_var_base64, pos_cas_id_base64, pos_con_var_base64, pos_con_id_base64 = cr_plts(post_mt_cas, post_mt_con,
-                                                                                           mind,
-                                                                                           geno, "post")
-    pos_man_qq_base64 = man_qq_plts(mt, "post")
+    print("Generating variant call rate plots")
+    pos_cas_var_base64, pos_con_var_base64 = plt.cr_var_plts(mt, geno)
+    print("Generating sample call rate plots")
+    pos_cas_id_base64, pos_con_id_base64 = plt.cr_id_plts(mt, mind)
+    print("Generating Manhattand & QQ plots")
+    pos_man_qq_base64 = plt.man_qq_plts(mt)
 
     # # pre_cas_var_base64, pre_cas_id_base64, pre_con_var_base64, pre_con_id_base64
     qc_plots_list = [pre_man_qq_base64, pos_man_qq_base64, pre_con_id_base64, pre_cas_id_base64, pos_con_id_base64, pos_cas_id_base64,
-                     f_stat_plot, pre_con_var_base64, pre_cas_var_base64, pos_con_var_base64, pos_cas_var_base64]
+                     f_stat_results['sex_check_plot'], pre_con_var_base64, pre_cas_var_base64, pos_con_var_base64, pos_cas_var_base64]
 
     # Tables
-    filter_counts_list = [len(pre_geno_cr), n_sample_miss, len(f_stat_out), len(geno_cr), len(monomorphic_snps),
-                          len(snps_hwe_controls), len(snps_hwe_cases)]
+    filter_counts_list = [var_pre_filter['geno_removed'], id_cr_filter['sample_miss_cases'] + id_cr_filter['sample_miss_controls'],
+                          f_stat_results['sex_check_removed'], sex_violations['sex_excluded'], sex_warnings_count,
+                          var_filter['geno_removed'], invariant_snps['monomorphic_snps'],
+                          hwe_con_results['maf_removed'], hwe_cas_results['maf_removed']]
     size_of_sample_html, exlusion_overview_html = generate_tables(pre_qc_counts, post_qc_counts, filter_counts_list)
     qc_tables_list = [size_of_sample_html, exlusion_overview_html]
 
@@ -213,13 +200,14 @@ def generate_tables(pre_qc_counts, post_qc_counts, filter_counts):
     snps_cr_95 = ['SNPs: call rate < 0.950 (pre-filter)', filter_counts[0]]
     ids_cr = ['IDS: call rate (cases/controls) < 0.980', filter_counts[1]]
     ids_fhet = ['IDs: FHET outside +- 0.20 (cases/controls)', filter_counts[2]]
-    #ids_sex_violations = ['IDs: Sex violations -excluded- (N-tested)', len(sex_violations)]
-    snps_cr_98 = ['SNPs: call rate < 0.980', filter_counts[3]]
-    snps_monomorphic = ['SNPs: without valid association p-value (invariant)', filter_counts[4]]
-    snps_hwe_con = ['SNPs: HWE-controls < -6', filter_counts[5]]
-    snps_hwe_cas = ['SNPs: HWE-cases < -10', filter_counts[6]]
-    exlusion_overview = [snps_cr_95, ids_cr, ids_fhet, snps_cr_98, snps_monomorphic, snps_hwe_con,
-                         snps_hwe_cas]
+    ids_sex_violations = ['IDs: Sex violations -excluded- (N-tested)', filter_counts[3]]
+    ids_sex_warnings = ['IDs: Sex warnings (undefined genotype/ambigous genotype)', filter_counts[4]]
+    snps_cr_98 = ['SNPs: call rate < 0.980', filter_counts[5]]
+    snps_monomorphic = ['SNPs: without valid association p-value (invariant)', filter_counts[6]]
+    snps_hwe_con = ['SNPs: HWE-controls < -6', filter_counts[7]]
+    snps_hwe_cas = ['SNPs: HWE-cases < -10', filter_counts[8]]
+    exlusion_overview = [snps_cr_95, ids_cr, ids_fhet, ids_sex_violations, ids_sex_warnings, snps_cr_98,
+                         snps_monomorphic, snps_hwe_con, snps_hwe_cas]
     exlusion_overviewdf = pd.DataFrame(exlusion_overview, columns=['Filter', 'N'])
     exlusion_overview_html = exlusion_overviewdf.to_html()
 
