@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 import argparse
+
 from preimp_qc.functions import run_qc
 from preimp_qc.io import read_plink, read_vcf, read_mt
 from preimp_qc.report import write_html_report
+
 
 
 def main():

@@ -1,5 +1,6 @@
 import hail as hl
 from typing import List, Tuple
+
 import preimp_qc.test_qc as qc
 import preimp_qc.test_plots as plt
 
@@ -93,6 +94,7 @@ def run_qc(mt: hl.MatrixTable, dirname: str, basename: str, input_type: str, pre
 
     # 3. Sample QC: F_stats
     print("3. Sample QC: F_stats")
+    
     mt, f_stat_results = qc.filter_sex_check(mt, fhet_y, fhet_x)
     print("Sex check filtered: {}".format(f_stat_results['sex_check_removed']))
     print("Samples: {}".format(mt.count_cols()))
