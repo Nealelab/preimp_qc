@@ -51,7 +51,7 @@ def qqplot(pvals, title: str = None):
     p_val_pd = ht.to_pandas()
     maxi = max(p_val_pd['expected_p'].max(), p_val_pd['observed_p'].max())
 
-    title = f': {title}' if title else 'QQ Plot'
+    title = f'{title}' if title else 'QQ Plot'
 
     plt.scatter(p_val_pd['expected_p'], p_val_pd['observed_p'], c='black', s=0.5)
     plt.plot((0, maxi + 0.4), (0, maxi + 0.4), 'red')
@@ -77,3 +77,48 @@ def fstat_plot(imputed_sex_ht: hl.Table, f_stat_x: float = 0.4, f_stat_y: float 
              edgecolor="k")
     plt.axvline(x=f_stat_y, color='red', linestyle='--')
     plt.axvline(x=f_stat_x, color='red', linestyle='--')
+
+
+def manhattan_plot(pvals, significance_threshold: float = -np.log10(5E-08)):
+    source = pvals._indices.source
+
+    if isinstance(source, Table):
+        ht = source.select(p_value=pvals)
+    else:
+        ht = source.select_rows(p_value=pvals).rows()
+
+    data = ht.to_pandas()
+    data = data.drop('alleles', 1)  # remove the 'allele' column
+    data.columns = ['chromosome', 'position', 'p']  # rename columns
+    data['chromosome'].replace({"X": 23, "Y": 24, "MT": 25}, inplace=True)
+    data.dropna(subset=['p'], inplace=True)  # drop NAs as log10(val) won't work
+
+    data['-log10(p_value)'] = -np.log10(data['p'])  # compute log10(pvals)
+    data['chromosome'] = data['chromosome'].astype('category')
+    data['ind'] = range(len(data))
+    data_grouped = data.groupby('chromosome')
+
+    fig = plt.figure(figsize=(15, 11))
+    ax = fig.add_subplot()
+
+    x_labels = []
+    x_labels_pos = []
+
+    colors = ['#E24E42', '#008F95']
+
+    for num, (name, group) in enumerate(data_grouped):
+        group.plot(kind='scatter', x='ind', y='-log10(p_value)', marker='o', color=colors[int(name) % len(colors)],
+                   ax=ax, s=1000000/len(data))
+        x_labels.append(name)
+        x_labels_pos.append((group['ind'].iloc[-1] - (group['ind'].iloc[-1] - group['ind'].iloc[0]) / 2))
+
+    ax.set_xticks(x_labels_pos)
+    ax.set_xticklabels(x_labels)
+    ax.set_xlim([0, len(data)])
+    ax.set_ylim([0, data['-log10(p_value)'].max() + 1])
+    ax.set_xlabel('Chromosome')
+    plt.axhline(y=significance_threshold, color='red', linestyle='--', linewidth=0.5)
+    plt.xticks(fontsize=9, rotation=90)
+    plt.yticks(fontsize=7)
+
+    # Usage: manhattan_plot(gwas.p_value)
