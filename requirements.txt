@@ -3,3 +3,6 @@ hail>=0.2.59
 matplotlib>=3.3.3
 plotnine>=0.7.1
 qqman>=1.0.6
+pandas~=0.25.3
+numpy~=1.18.4
+humanize~=1.0.0
