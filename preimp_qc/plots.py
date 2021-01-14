@@ -145,8 +145,9 @@ def manhattan_plot(pvals, significance_threshold: float = -np.log10(5E-08), titl
         for index, row in data.iterrows():
             if row['-log10(p_value)'] >= significance_threshold:
                 ax.annotate('{}:{}'.format(row['chromosome'], row['position']),
-                            xy=(index - 10, row['-log10(p_value)'] + 0.05),
+                            xy=(index, row['-log10(p_value)'] + 0.1),
                             bbox=dict(boxstyle="round", fc="0.8"), fontsize=8)
+                # FIX: the annotation box keeps moving further away from the point (SNP) as you move from left to right
     plt.close()
 
     # Usage: manhattan_plot(gwas.p_value)
