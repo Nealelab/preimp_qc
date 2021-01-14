@@ -97,7 +97,7 @@ def fstat_plot(imputed_sex_ht: hl.Table, f_stat_x: float = 0.4, f_stat_y: float 
 
 # TESTED AND WORKING
 def manhattan_plot(pvals, significance_threshold: float = -np.log10(5E-08), title: str = None,
-                   figsize: tuple = (17, 11)):
+                   figsize: tuple = (17, 11), annotate_sig: bool = False):
     source = pvals._indices.source
 
     if isinstance(source, Table):
@@ -141,6 +141,12 @@ def manhattan_plot(pvals, significance_threshold: float = -np.log10(5E-08), titl
     plt.axhline(y=significance_threshold, color='red', linestyle='--', linewidth=0.5)
     plt.xticks(fontsize=9, rotation=90)
     plt.yticks(fontsize=7)
+    if annotate_sig is True:
+        for index, row in data.iterrows():
+            if row['-log10(p_value)'] >= significance_threshold:
+                ax.annotate('{}:{}'.format(row['chromosome'], row['position']),
+                            xy=(index - 10, row['-log10(p_value)'] + 0.05),
+                            bbox=dict(boxstyle="round", fc="0.8"), fontsize=8)
     plt.close()
 
     # Usage: manhattan_plot(gwas.p_value)
