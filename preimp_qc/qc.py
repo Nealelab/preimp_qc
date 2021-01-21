@@ -3,7 +3,7 @@ import hail as hl
 from typing import Tuple, Any, Dict, Optional
 
 from .utils import gen_uid
-from .plots import plt_hist, qqplot, fstat_plot
+from .plots import plt_hist, qqplot, fstat_plot, manhattan_plot
 
 
 # TESTED AND WORKING
@@ -55,8 +55,9 @@ def summary_stats(mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, Dict[str, Any]]:
     return mt, results
 
 
-# TESTED AND WORKING: Zan is still working on writing the Manhattan plot function
-def compute_p_values(mt, covariates=None, title: Optional[str] = None) -> Tuple[hl.MatrixTable, Dict[str, Any]]:
+# TESTED AND WORKING
+def compute_p_values(mt: hl.MatrixTable, covariates: list = None, qqtitle: Optional[str] = None,
+                     mantitle: Optional[str] = None) -> Tuple[hl.MatrixTable, Dict[str, Any]]:
     if covariates is None:
         covariates = [1.0]
 
@@ -69,11 +70,11 @@ def compute_p_values(mt, covariates=None, title: Optional[str] = None) -> Tuple[
     n_sig_variants = gwas.filter(gwas.p_value < 5E-8).count()
     results['n_sig_variants'] = n_sig_variants
 
-    qq_plot = qqplot(gwas.p_value, title=title)
-    manhattan_plot = hl.plot.manhattan(gwas.p_value, title=f'Manhattan Plot{title}')
+    qq_plot = qqplot(gwas.p_value, title=qqtitle)
+    man_plot = manhattan_plot(gwas.p_value, title=mantitle)
 
     results['qq_plot'] = qq_plot
-    results['manhattan_plot'] = manhattan_plot
+    results['manhattan_plot'] = man_plot
 
     return mt, results
 
@@ -84,7 +85,7 @@ def filter_variants_by_call_rate(mt: hl.MatrixTable, call_rate: float, *,
     qc_dest = f'variant-qc-{gen_uid()}'
     mt = hl.variant_qc(mt, name=qc_dest)
 
-    plot = plt_hist(mt[qc_dest].call_rate, title=title, threshold=call_rate)
+    plot = plt_hist(mt[qc_dest].call_rate, title=title, threshold=call_rate, x_label='Call Rate')
 
     excluded_variants = mt.filter_rows(mt[qc_dest].call_rate < call_rate).locus.collect()
     n_excluded_variants = len(excluded_variants)
@@ -130,7 +131,7 @@ def filter_variants_by_maf(mt: hl.MatrixTable, maf: float,
     qc_dest = f'variant-qc-{gen_uid()}'
     mt = hl.variant_qc(mt, name=qc_dest)
 
-    plot = plt_hist(hl.min(mt[qc_dest].AF), title='Minor Allele Frequency', log=True)
+    plot = plt_hist(hl.min(mt[qc_dest].AF), title='Allele Frequency', x_label='log10(AF)', log=True)
 
     excluded_variants = mt.filter_rows(hl.min(mt[qc_dest].AF) < maf).locus.collect()
     if len(excluded_variants) > 0:
