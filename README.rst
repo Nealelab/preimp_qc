@@ -1,5 +1,8 @@
+This have been moved to: https://github.com/atgu/GWASpy
+=================================================================
+
 preimp_qc
-=============
+------------
 
 A Python package for performing GWAS QC.
 
