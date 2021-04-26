@@ -1,4 +1,4 @@
-This have been moved to: https://github.com/atgu/GWASpy
+The work has been moved to: https://github.com/atgu/GWASpy
 =================================================================
 
 preimp_qc
